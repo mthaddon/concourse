@@ -82,6 +82,7 @@ module Concourse exposing
     , isInstanceGroup
     , mapBuildPlan
     , pipelineId
+    , resourceId
     , retrieveCSRFToken
     , toInstanceGroupId
     , toPipelineId
@@ -1104,6 +1105,15 @@ type alias ResourceIdentifier =
     }
 
 
+resourceId : { r | teamName : String, pipelineName : String, pipelineInstanceVars : InstanceVars, resourceName : String } -> ResourceIdentifier
+resourceId { teamName, pipelineName, pipelineInstanceVars, resourceName } =
+    { teamName = teamName
+    , pipelineName = pipelineName
+    , pipelineInstanceVars = pipelineInstanceVars
+    , resourceName = resourceName
+    }
+
+
 type alias VersionedResource =
     { id : Int
     , version : Version
@@ -1323,6 +1333,7 @@ decodeUser =
         |> andMap (Json.Decode.field "is_admin" Json.Decode.bool)
         |> andMap (Json.Decode.field "teams" (Json.Decode.dict (Json.Decode.list Json.Decode.string)))
         |> andMap (Json.Decode.field "display_user_id" Json.Decode.string)
+
 
 
 -- Cause
