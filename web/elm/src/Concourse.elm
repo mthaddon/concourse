@@ -13,10 +13,12 @@ module Concourse exposing
     , BuildResourcesOutput
     , BuildStep(..)
     , CSRFToken
-    , CausalityBuild(..)
+    , Causality
+    , CausalityBuild
     , CausalityDirection(..)
+    , CausalityJob
+    , CausalityResource
     , CausalityResourceVersion
-    , Cause
     , ClusterInfo
     , DatabaseID
     , HookedPlan
@@ -52,8 +54,7 @@ module Concourse exposing
     , decodeBuildPlanResponse
     , decodeBuildPrep
     , decodeBuildResources
-    , decodeCausalityResourceVersion
-    , decodeCause
+    , decodeCausality
     , decodeInfo
     , decodeInstanceGroupId
     , decodeInstanceVars
@@ -1194,56 +1195,90 @@ type CausalityDirection
     | Upstream
 
 
-type alias CausalityResourceVersion =
-    { resourceId : Int
-    , versionId : Int
-    , resourceName : String
-    , version : Version
-    , builds : List CausalityBuild
-    }
-
-
-type CausalityBuild
-    = -- because resourceVersion and build are mutually recursive, one of them needs to be a concrete type
-      CausalityBuildVariant CausalityBuildFields
-
-
-type alias CausalityBuildFields =
+type alias CausalityJob =
     { id : Int
     , name : String
-    , status : BuildStatus
+    , buildIds : List Int
+    }
+
+
+type alias CausalityBuild =
+    { id : Int
+    , name : String
     , jobId : Int
-    , jobName : String
+    , status : BuildStatus
+    , resourceVersionIds : List Int
+    }
+
+
+type alias CausalityResource =
+    { id : Int
+    , name : String
+    , versionIds : List Int
+    }
+
+
+type alias CausalityResourceVersion =
+    { id : Int
+    , version : Version
+    , resourceId : Int
+    , buildIds : List Int
+    }
+
+
+type alias Causality =
+    { jobs : List CausalityJob
+    , builds : List CausalityBuild
+    , resources : List CausalityResource
     , resourceVersions : List CausalityResourceVersion
     }
+
+
+decodeCausalityJob : Json.Decode.Decoder CausalityJob
+decodeCausalityJob =
+    Json.Decode.succeed CausalityJob
+        |> andMap (Json.Decode.field "id" Json.Decode.int)
+        |> andMap (Json.Decode.field "name" Json.Decode.string)
+        |> andMap
+            (defaultTo []
+                (Json.Decode.field "build_ids" <| Json.Decode.list Json.Decode.int)
+            )
+
+
+decodeCausalityBuild : Json.Decode.Decoder CausalityBuild
+decodeCausalityBuild =
+    Json.Decode.succeed CausalityBuild
+        |> andMap (Json.Decode.field "id" Json.Decode.int)
+        |> andMap (Json.Decode.field "name" Json.Decode.string)
+        |> andMap (Json.Decode.field "job_id" Json.Decode.int)
+        |> andMap (Json.Decode.field "status" decodeBuildStatus)
+        |> andMap (defaultTo [] <| Json.Decode.field "resource_version_ids" <| Json.Decode.list Json.Decode.int)
+
+
+decodeCausalityResource : Json.Decode.Decoder CausalityResource
+decodeCausalityResource =
+    Json.Decode.succeed CausalityResource
+        |> andMap (Json.Decode.field "id" Json.Decode.int)
+        |> andMap (Json.Decode.field "name" Json.Decode.string)
+        |> andMap (defaultTo [] <| Json.Decode.field "version_ids" <| Json.Decode.list Json.Decode.int)
 
 
 decodeCausalityResourceVersion : Json.Decode.Decoder CausalityResourceVersion
 decodeCausalityResourceVersion =
     Json.Decode.succeed CausalityResourceVersion
-        |> andMap (Json.Decode.field "resource_id" Json.Decode.int)
-        |> andMap (Json.Decode.field "resource_version_id" Json.Decode.int)
-        |> andMap (Json.Decode.field "resource_name" Json.Decode.string)
-        |> andMap (Json.Decode.field "version" decodeVersion)
-        |> andMap (defaultTo [] (Json.Decode.field "builds" (Json.Decode.list decodeCausalityBuild)))
-
-
-decodeCausalityBuild : Json.Decode.Decoder CausalityBuild
-decodeCausalityBuild =
-    Json.Decode.succeed CausalityBuildFields
         |> andMap (Json.Decode.field "id" Json.Decode.int)
-        |> andMap (Json.Decode.field "name" Json.Decode.string)
-        |> andMap (Json.Decode.field "status" decodeBuildStatus)
-        |> andMap (Json.Decode.field "job_id" Json.Decode.int)
-        |> andMap (Json.Decode.field "job_name" Json.Decode.string)
-        |> andMap
-            (defaultTo []
-                (Json.Decode.field "resource_versions" <|
-                    Json.Decode.list <|
-                        Json.Decode.lazy (\_ -> decodeCausalityResourceVersion)
-                )
-            )
-        |> Json.Decode.map CausalityBuildVariant
+        |> andMap (Json.Decode.field "version" decodeVersion)
+        |> andMap (Json.Decode.field "resource_id" Json.Decode.int)
+        |> andMap (defaultTo [] <| Json.Decode.field "build_ids" <| Json.Decode.list Json.Decode.int)
+
+
+decodeCausality : Json.Decode.Decoder Causality
+decodeCausality =
+    Json.Decode.succeed Causality
+        |> andMap (Json.Decode.field "jobs" <| Json.Decode.list decodeCausalityJob)
+        |> andMap (Json.Decode.field "builds" <| Json.Decode.list decodeCausalityBuild)
+        |> andMap (Json.Decode.field "resource" <| Json.Decode.list decodeCausalityResource)
+        |> andMap (Json.Decode.field "resource_versions" <| Json.Decode.list decodeCausalityResourceVersion)
 
 
 type alias Version =
@@ -1345,23 +1380,6 @@ decodeUser =
         |> andMap (Json.Decode.field "is_admin" Json.Decode.bool)
         |> andMap (Json.Decode.field "teams" (Json.Decode.dict (Json.Decode.list Json.Decode.string)))
         |> andMap (Json.Decode.field "display_user_id" Json.Decode.string)
-
-
-
--- Cause
-
-
-type alias Cause =
-    { versionedResourceID : Int
-    , buildID : Int
-    }
-
-
-decodeCause : Json.Decode.Decoder Cause
-decodeCause =
-    Json.Decode.succeed Cause
-        |> andMap (Json.Decode.field "versioned_resource_id" Json.Decode.int)
-        |> andMap (Json.Decode.field "build_id" Json.Decode.int)
 
 
 

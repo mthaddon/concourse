@@ -23,8 +23,11 @@ import ColorValues
 import Colors exposing (buildStatusColor)
 import Concourse
     exposing
-        ( CausalityBuild(..)
+        ( Causality
+        , CausalityBuild
         , CausalityDirection(..)
+        , CausalityJob
+        , CausalityResource
         , CausalityResourceVersion
         )
 import Concourse.BuildStatus exposing (BuildStatus(..))
@@ -425,7 +428,7 @@ constructBuild parentId dir (CausalityBuildVariant b) graph =
     List.foldl (\build acc -> constructResourceVersion nodeId dir build acc) updatedGraph b.resourceVersions
 
 
-constructGraph : CausalityDirection -> CausalityResourceVersion -> Graph NodeType ()
+constructGraph : CausalityDirection -> Causality -> Graph NodeType ()
 constructGraph direction rv =
     let
         graph =
